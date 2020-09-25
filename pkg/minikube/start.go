@@ -7,33 +7,32 @@ import (
 	"fmt"
 	"math/rand"
 	"os/exec"
-	"runtime"
 	"time"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 	"github.com/pkg/errors"
-	"go.opencensus.io/stats"
-	"go.opencensus.io/tag"
-	"go.opencensus.io/trace"
+	"go.opentelemetry.io/otel/api/global"
+	"go.opentelemetry.io/otel/api/trace"
+)
+
+var (
+	tracer trace.Tracer
 )
 
 func start() error {
-
-	ctx, err := tag.New(context.Background(),
-		tag.Insert(osKey, runtime.GOOS),
-	)
-	if err != nil {
-		return errors.Wrap(err, "insert tag")
-	}
-
 	cmd := exec.Command("minikube", "start", "--output", "json")
 	stdout, _ := cmd.StdoutPipe()
 
+	ctx := context.Background()
+	// Create custom span.
+	tracer = global.TraceProvider().Tracer("minikube.sigs.k8s.io")
 	spanName := "minikube.sigs.k8s.io/StartTime"
-	ctx, span := trace.StartSpan(ctx, spanName)
+	ctx, span := tracer.Start(ctx, spanName)
 	defer span.End()
-	cmd.Start()
 
+	if err := cmd.Start(); err != nil {
+		return errors.Wrap(err, "starting")
+	}
 	scanner := bufio.NewScanner(stdout)
 	scanner.Split(bufio.ScanLines)
 	for scanner.Scan() {
@@ -46,24 +45,17 @@ func start() error {
 	return nil
 }
 
-func processStep(ctx context.Context, spanName, step string) error {
-	ctx, err := tag.New(ctx,
-		tag.Insert(osKey, runtime.GOOS),
-	)
-	if err != nil {
-		return errors.Wrap(err, "new key")
-	}
+func processStep(ctx context.Context, spanName string, step string) error {
 	name, err := stepName(step)
 	if err != nil {
 		return errors.Wrap(err, "step name")
 	}
-	ctx, span := trace.StartSpan(ctx, fmt.Sprintf("%s/%s", spanName, name))
+	ctx, span := tracer.Start(ctx, name)
 	defer span.End()
 
 	// Sleep for [1,10] seconds to fake work.
 	time.Sleep(time.Duration(rand.Intn(10)+1) * time.Second)
 
-	stats.Record(ctx, mLatencyS.M(25648))
 	return nil
 }
 
