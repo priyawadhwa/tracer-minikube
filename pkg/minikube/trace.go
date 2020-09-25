@@ -8,6 +8,7 @@ import (
 	"github.com/pkg/errors"
 	"go.opencensus.io/stats"
 	"go.opencensus.io/stats/view"
+	"go.opencensus.io/tag"
 	"go.opencensus.io/trace"
 )
 
@@ -15,6 +16,11 @@ import (
 var (
 	// The latency in seconds
 	mLatencyS = stats.Float64("repl/latency", "The latency in seconds per REPL loop", stats.UnitSeconds)
+)
+
+// TagKeys for minikube start.
+var (
+	keyMethod = tag.MustNewKey("minikube")
 )
 
 // Trace traces minikube start
@@ -42,7 +48,7 @@ func Trace() error {
 		return errors.Wrap(err, "enabling views")
 	}
 
-	return nil
+	return start()
 }
 
 func enableViews() error {
@@ -51,6 +57,7 @@ func enableViews() error {
 		Measure:     mLatencyS,
 		Description: "minikube start times",
 		Aggregation: view.LastValue(),
+		TagKeys:     []tag.Key{keyMethod},
 	}
 
 	return view.Register(startTimeView)
