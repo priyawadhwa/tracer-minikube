@@ -5,13 +5,16 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"os/exec"
+	"runtime"
 	"time"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 	"github.com/pkg/errors"
 	"go.opencensus.io/stats"
 	"go.opencensus.io/tag"
+	"go.opencensus.io/trace"
 )
 
 func start() error {
@@ -32,26 +35,37 @@ func start() error {
 }
 
 func processStep(step string) error {
+	ctx, err := tag.New(context.Background(),
+		tag.Insert(osKey, runtime.GOOS),
+	)
+	if err != nil {
+		return errors.Wrap(err, "new key")
+	}
+	name, err := stepName(step)
+	if err != nil {
+		return errors.Wrap(err, "step name")
+	}
+	ctx, span := trace.StartSpan(ctx, fmt.Sprintf("minikube.sigs.k8s.io/%s", name))
+	defer span.End()
+
+	// Sleep for [1,10] seconds to fake work.
+	time.Sleep(time.Duration(rand.Intn(10)+1) * time.Second)
+
+	stats.Record(ctx, mLatencyS.M(25648))
+	return nil
+}
+
+func stepName(step string) (string, error) {
 	event := cloudevents.NewEvent()
 	if err := json.Unmarshal([]byte(step), &event); err != nil {
-		return errors.Wrap(err, "unmarshal cloud event")
+		return "", errors.Wrap(err, "unmarshal cloud event")
 	}
 	m := map[string]string{}
 	data := event.Data()
 	if err := json.Unmarshal(data, &m); err != nil {
-		return errors.Wrap(err, "unmarshal data")
+		return "", errors.Wrap(err, "unmarshal data")
 	}
 	stepName := m["name"]
 	fmt.Println("step name is", stepName)
-
-	// for now, assume every step takes 3 seconds
-	t := 3 * time.Second
-
-	ctx, err := tag.New(context.Background(), tag.Insert(keyMethod, stepName))
-	if err != nil {
-		return errors.Wrap(err, "new tag")
-	}
-	stats.Record(ctx, mLatencyS.M(t.Seconds()))
-
-	return nil
+	return stepName, nil
 }

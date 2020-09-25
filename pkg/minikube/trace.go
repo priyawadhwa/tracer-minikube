@@ -1,9 +1,6 @@
 package minikube
 
 import (
-	"os"
-	"runtime"
-
 	"contrib.go.opencensus.io/exporter/stackdriver"
 	"github.com/pkg/errors"
 	"go.opencensus.io/stats"
@@ -15,28 +12,26 @@ import (
 // Measures for the stats quickstart.
 var (
 	// The latency in seconds
-	mLatencyS = stats.Float64("repl/latency", "The latency in seconds per REPL loop", stats.UnitSeconds)
+	mLatencyS = stats.Float64("repl/startTime", "The latency in start time", stats.UnitSeconds)
 )
 
 // TagKeys for minikube start.
 var (
-	keyMethod = tag.MustNewKey("minikube")
+	osKey = tag.MustNewKey("minikube.sigs.k8s.io/keys/os")
 )
 
 // Trace traces minikube start
 func Trace() error {
 	// Create and register a OpenCensus Stackdriver Trace exporter.
-	labels := &stackdriver.Labels{}
-	labels.Set("os", runtime.GOOS, "operating system")
 	exporter, err := stackdriver.NewExporter(stackdriver.Options{
-		ProjectID:               os.Getenv("priya-wadhwa"),
-		DefaultMonitoringLabels: labels,
+		ProjectID:               "priya-wadhwa",
+		DefaultMonitoringLabels: &stackdriver.Labels{},
 	})
 	if err != nil {
 		return errors.Wrap(err, "getting exporter")
 	}
-	trace.RegisterExporter(exporter)
 	trace.ApplyConfig(trace.Config{DefaultSampler: trace.AlwaysSample()})
+	trace.RegisterExporter(exporter)
 
 	// Export to Stackdriver Monitoring.
 	if err = exporter.StartMetricsExporter(); err != nil {
@@ -55,9 +50,9 @@ func enableViews() error {
 	startTimeView := &view.View{
 		Name:        "minikube/startTime",
 		Measure:     mLatencyS,
-		Description: "minikube start times",
-		Aggregation: view.LastValue(),
-		TagKeys:     []tag.Key{keyMethod},
+		Description: "minikube start over time",
+		Aggregation: view.Distribution(1, 500),
+		TagKeys:     []tag.Key{osKey},
 	}
 
 	return view.Register(startTimeView)
