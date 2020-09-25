@@ -18,8 +18,20 @@ import (
 )
 
 func start() error {
+
+	ctx, err := tag.New(context.Background(),
+		tag.Insert(osKey, runtime.GOOS),
+	)
+	if err != nil {
+		return errors.Wrap(err, "insert tag")
+	}
+
 	cmd := exec.Command("minikube", "start", "--output", "json")
 	stdout, _ := cmd.StdoutPipe()
+
+	spanName := "minikube.sigs.k8s.io/StartTime"
+	ctx, span := trace.StartSpan(ctx, spanName)
+	defer span.End()
 	cmd.Start()
 
 	scanner := bufio.NewScanner(stdout)
@@ -27,15 +39,15 @@ func start() error {
 	for scanner.Scan() {
 		m := scanner.Text()
 		fmt.Println(m)
-		if err := processStep(m); err != nil {
+		if err := processStep(ctx, spanName, m); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func processStep(step string) error {
-	ctx, err := tag.New(context.Background(),
+func processStep(ctx context.Context, spanName, step string) error {
+	ctx, err := tag.New(ctx,
 		tag.Insert(osKey, runtime.GOOS),
 	)
 	if err != nil {
@@ -45,7 +57,7 @@ func processStep(step string) error {
 	if err != nil {
 		return errors.Wrap(err, "step name")
 	}
-	ctx, span := trace.StartSpan(ctx, fmt.Sprintf("minikube.sigs.k8s.io/%s", name))
+	ctx, span := trace.StartSpan(ctx, fmt.Sprintf("%s/%s", spanName, name))
 	defer span.End()
 
 	// Sleep for [1,10] seconds to fake work.
