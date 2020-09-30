@@ -11,23 +11,15 @@ import (
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 	"github.com/pkg/errors"
-	"go.opentelemetry.io/otel/api/global"
-	"go.opentelemetry.io/otel/api/trace"
+	"github.com/priyawadhwa/tracer-minikube/pkg/tracer"
 )
 
-var (
-	tracer trace.Tracer
-)
-
-func start() error {
+func Start(ctx context.Context) error {
 	cmd := exec.Command("minikube", "start", "--output", "json")
 	stdout, _ := cmd.StdoutPipe()
 
-	ctx := context.Background()
-	// Create custom span.
-	tracer = global.TraceProvider().Tracer("minikube.sigs.k8s.io")
 	spanName := "minikube.sigs.k8s.io/StartTime"
-	ctx, span := tracer.Start(ctx, spanName)
+	ctx, span := tracer.StartSpan(ctx, spanName)
 	defer span.End()
 
 	if err := cmd.Start(); err != nil {
@@ -50,7 +42,7 @@ func processStep(ctx context.Context, spanName string, step string) error {
 	if err != nil {
 		return errors.Wrap(err, "step name")
 	}
-	ctx, span := tracer.Start(ctx, name)
+	ctx, span := tracer.StartSpan(ctx, name)
 	defer span.End()
 
 	// Sleep for [1,10] seconds to fake work.

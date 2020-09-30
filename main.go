@@ -1,18 +1,33 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/priyawadhwa/tracer-minikube/pkg/minikube"
+	"github.com/priyawadhwa/tracer-minikube/pkg/skaffold"
+	"github.com/priyawadhwa/tracer-minikube/pkg/tracer"
 )
 
 func main() {
-	if err := minikube.Trace(); err != nil {
+	ctx, span := tracer.StartSpan(context.Background(), "container-tools")
+	defer span.End()
+	if err := execute(ctx); err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}
-	fmt.Println("sleeping 15 seconds")
 	time.Sleep(15 * time.Second)
+}
+
+func execute(ctx context.Context) error {
+	if err := minikube.Start(ctx); err != nil {
+		return errors.Wrap(err, "starting minikube")
+	}
+	if err := skaffold.DevLoop(ctx); err != nil {
+		return errors.Wrap(err, "skaffold dev loop")
+	}
+	return nil
 }
